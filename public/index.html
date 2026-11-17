@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Cell Wars</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f2fbff; }
+  body {
+    font-family: 'Ubuntu', 'Segoe UI', system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  canvas { display: block; }
+  .hidden { display: none !important; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10; padding: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .45);
+  }
+  .panel {
+    width: 100%; max-width: 360px; box-sizing: border-box; padding: 28px;
+    background: #fff; color: #333; border-radius: 14px; text-align: center;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  }
+  .logo { margin: 0 0 4px; font-size: 42px; font-weight: 800; letter-spacing: 1px; }
+  .logo span:nth-child(5n+1) { color: #ff3b3b; }
+  .logo span:nth-child(5n+2) { color: #ff8a00; }
+  .logo span:nth-child(5n+3) { color: #00c853; }
+  .logo span:nth-child(5n+4) { color: #2962ff; }
+  .logo span:nth-child(5n+5) { color: #d500f9; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 20px; }
+  input {
+    width: 100%; box-sizing: border-box; padding: 12px 14px; margin-bottom: 12px;
+    font: inherit; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; outline: none;
+  }
+  input:focus { border-color: #54c800; }
+  .btn {
+    width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer;
+    font: inherit; font-size: 17px; font-weight: 700; color: #fff; background: #54c800;
+  }
+  .btn:hover { background: #48ad00; }
+  .btn:disabled { background: #aaa; cursor: default; }
+  .btn.alt { margin-top: 8px; background: #4a90d9; }
+  .btn.alt:hover { background: #3b7cc2; }
+  .controls {
+    margin-top: 18px; padding: 10px 14px; text-align: left; line-height: 2;
+    font-size: 13px; color: #555; background: #f4f7f9; border-radius: 8px;
+  }
+  kbd {
+    display: inline-block; min-width: 20px; padding: 0 6px; text-align: center;
+    font: inherit; font-size: 12px; color: #333; background: #fff;
+    border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px;
+  }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+  .stat { padding: 10px; background: #f4f7f9; border-radius: 8px; }
+  .stat b { display: block; font-size: 20px; color: #222; }
+  .stat span { font-size: 12px; color: #888; }
+  #deadTitle { margin: 0; font-size: 28px; }
+  #killer { margin: 6px 0 0; color: #888; font-size: 14px; }
+
+  .hud { position: fixed; z-index: 5; pointer-events: none; color: #fff; background: rgba(0, 0, 0, .4); border-radius: 6px; }
+  #lb { top: 10px; right: 10px; width: 200px; padding: 10px 12px; font-size: 15px; }
+  #lb h2 { margin: 0 0 6px; text-align: center; font-size: 20px; }
+  #lb ol { margin: 0; padding: 0; list-style: none; }
+  #lb li { line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lb li.me { color: #ffaaaa; }
+  #score { left: 10px; bottom: 10px; padding: 6px 12px; font-size: 18px; }
+  #net { left: 10px; top: 10px; padding: 4px 10px; font-size: 12px; }
+  #minimap { right: 10px; bottom: 10px; }
+  #conn {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20;
+    padding: 12px 20px; color: #fff; background: rgba(200, 30, 30, .85); border-radius: 8px;
+  }
+  #touch { position: fixed; right: 16px; bottom: 180px; z-index: 6; display: none; flex-direction: column; gap: 12px; }
+  #touch button {
+    width: 64px; height: 64px; border: none; border-radius: 50%;
+    font: inherit; font-size: 14px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .35);
+  }
+  @media (pointer: coarse) { body.playing #touch { display: flex; } }
+  body:not(.playing) .hud { display: none; }
+  @media (max-width: 600px) {
+    #lb { width: 140px; font-size: 13px; }
+    #lb h2 { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="lb" class="hud"><h2>Leaderboard</h2><ol id="lbList"></ol></div>
+<div id="score" class="hud">Score: 0</div>
+<div id="net" class="hud"></div>
+<canvas id="minimap" class="hud" width="150" height="150"></canvas>
+
+<div id="touch">
+  <button id="tSplit" type="button">분열</button>
+  <button id="tEject" type="button">발사</button>
+</div>
+
+<div id="startScreen" class="overlay">
+  <div class="panel">
+    <h1 class="logo"><span>C</span><span>e</span><span>l</span><span>l</span><span>W</span><span>a</span><span>r</span><span>s</span></h1>
+    <div class="sub">먹고, 나누고, 살아남으세요</div>
+    <input id="nameInput" type="text" placeholder="닉네임" maxlength="15" autocomplete="off">
+    <button id="playBtn" class="btn" disabled>연결 중...</button>
+    <div class="controls">
+      <kbd>마우스</kbd> 이동<br>
+      <kbd>Space</kbd> 분열 — 질량 35 이상인 세포를 반으로 나눠 앞으로 발사<br>
+      <kbd>W</kbd> 질량 발사 — 꾹 누르면 연사, 바이러스에 7번 맞히면 바이러스가 발사됩니다<br>
+      상대보다 25% 이상 커야 먹을 수 있습니다. 분열한 세포는 30초 뒤에 다시 합쳐집니다.
+    </div>
+  </div>
+</div>
+
+<div id="deathScreen" class="overlay hidden">
+  <div class="panel">
+    <h2 id="deadTitle">게임 오버</h2>
+    <p id="killer"></p>
+    <div class="stats">
+      <div class="stat"><b id="stBest">0</b><span>최고 질량</span></div>
+      <div class="stat"><b id="stTime">0</b><span>생존 시간</span></div>
+      <div class="stat"><b id="stFood">0</b><span>먹은 먹이</span></div>
+      <div class="stat"><b id="stCells">0</b><span>먹은 세포</span></div>
+      <div class="stat" style="grid-column: span 2"><b id="stRank">-</b><span>최고 순위</span></div>
+    </div>
+    <button id="againBtn" class="btn">다시 하기</button>
+    <button id="menuBtn" class="btn alt">메인 메뉴</button>
+  </div>
+</div>
+
+<div id="conn" class="hidden">서버 연결이 끊겼습니다. 재연결 중...</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const TAU = Math.PI * 2;
+const $ = id => document.getElementById(id);
+const canvas = $('game');
+const ctx = canvas.getContext('2d');
+const mini = $('minimap');
+const mctx = mini.getContext('2d');
+
+let cfg = null;
+let myPid = 0;
+let alive = false;
+const pinfo = new Map();
+const food = new Map();
+const cells = new Map();
+const pellets = new Map();
+const viruses = new Map();
+const cam = { x: 3500, y: 3500, z: 1 };
+let dpr = 1, vw = 0, vh = 0;
+let mouseX = 0, mouseY = 0;
+let myMass = 0;
+let ping = 0;
+
+// Client-side prediction for own cells (mirrors server moveCells)
+const speedFor = r => 2200 * Math.pow(r, -0.439);
+const lagMs = () => ping + 32; // RTT + avg tick wait + avg mouse send interval
+function histAt(o, t) {
+  const h = o.h;
+  if (!h || !h.length || h[0][0] > t) return null;
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i][0] > t) continue;
+    const a = h[i], b = h[i + 1];
+    if (!b) return a;
+    const f = (t - a[0]) / (b[0] - a[0] || 1);
+    return [t, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+  return null;
+}
+
+const darkCache = new Map();
+function darken(hex) {
+  let v = darkCache.get(hex);
+  if (!v) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = 0.8;
+    v = `rgb(${((n >> 16) & 255) * f | 0},${((n >> 8) & 255) * f | 0},${(n & 255) * f | 0})`;
+    darkCache.set(hex, v);
+  }
+  return v;
+}
+
+function nameOf(pid) {
+  const info = pinfo.get(pid);
+  return info && info.name ? info.name : '이름 없는 세포';
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  vw = innerWidth;
+  vh = innerHeight;
+  canvas.width = vw * dpr;
+  canvas.height = vh * dpr;
+  canvas.style.width = vw + 'px';
+  canvas.style.height = vh + 'px';
+  mini.width = 150 * dpr;
+  mini.height = 150 * dpr;
+  mini.style.width = mini.style.height = (vw < 600 ? 110 : 150) + 'px';
+  if (alive) socket.emit('view', { w: vw, h: vh });
+}
+
+const socket = io({ transports: ['websocket', 'polling'] });
+
+socket.on('connect', () => {
+  $('conn').classList.add('hidden');
+  $('playBtn').disabled = false;
+  $('playBtn').textContent = '플레이';
+});
+
+socket.on('disconnect', () => {
+  $('conn').classList.remove('hidden');
+  $('playBtn').disabled = true;
+  $('playBtn').textContent = '연결 중...';
+  if (alive) {
+    alive = false;
+    document.body.classList.remove('playing');
+    $('startScreen').classList.remove('hidden');
+  }
+});
+
+socket.on('hello', d => {
+  cfg = d;
+  pinfo.clear();
+  for (const [pid, name, color] of d.pinfo) pinfo.set(pid, { name, color });
+});
+socket.on('pi', ([pid, name, color]) => pinfo.set(pid, { name, color }));
+socket.on('pl', pid => pinfo.delete(pid));
+
+socket.on('init', d => {
+  myPid = d.pid;
+  alive = true;
+  food.clear();
+  cells.clear();
+  pellets.clear();
+  viruses.clear();
+  const f = d.food;
+  for (let i = 0; i < f.length; i += 4) food.set(f[i], { x: f[i + 1], y: f[i + 2], c: f[i + 3] });
+  cam.z = Math.max(vh / 1080, vw / 1920);
+  document.body.classList.add('playing');
+  $('startScreen').classList.add('hidden');
+  $('deathScreen').classList.add('hidden');
+});
+
+let gen = 0;
+socket.on('s', d => {
+  for (const id of d.fd) food.delete(id);
+  const fa = d.fa;
+  for (let i = 0; i < fa.length; i += 4) food.set(fa[i], { x: fa[i + 1], y: fa[i + 2], c: fa[i + 3] });
+
+  gen++;
+  const now = performance.now();
+  const c = d.c;
+  for (let i = 0; i < c.length; i += 5) {
+    let o = cells.get(c[i]);
+    if (!o) {
+      o = { pid: c[i + 1], x: c[i + 2], y: c[i + 3], r: c[i + 4], ex: 0, ey: 0 };
+      if (o.pid === myPid) o.h = [];
+      cells.set(c[i], o);
+    }
+    o.tx = c[i + 2]; o.ty = c[i + 3]; o.tr = c[i + 4]; o.g = gen;
+    if (o.h) {
+      // Compare server position with where we predicted we were ~one RTT ago
+      const p = histAt(o, now - lagMs());
+      if (p) { o.ex = o.tx - p[1]; o.ey = o.ty - p[2]; } else { o.ex = o.ey = 0; }
+    }
+  }
+  for (const [id, o] of cells) if (o.g !== gen) cells.delete(id);
+
+  const e = d.e;
+  for (let i = 0; i < e.length; i += 4) {
+    let o = pellets.get(e[i]);
+    if (!o) { o = { pid: e[i + 3], x: e[i + 1], y: e[i + 2], r: cfg.ejectR, tr: cfg.ejectR }; pellets.set(e[i], o); }
+    o.tx = e[i + 1]; o.ty = e[i + 2]; o.g = gen;
+  }
+  for (const [id, o] of pellets) if (o.g !== gen) pellets.delete(id);
+
+  const v = d.v;
+  for (let i = 0; i < v.length; i += 4) {
+    let o = viruses.get(v[i]);
+    if (!o) { o = { x: v[i + 1], y: v[i + 2], r: v[i + 3] }; viruses.set(v[i], o); }
+    o.tx = v[i + 1]; o.ty = v[i + 2]; o.tr = v[i + 3]; o.g = gen;
+  }
+  for (const [id, o] of viruses) if (o.g !== gen) viruses.delete(id);
+});
+
+socket.on('dead', s => {
+  alive = false;
+  document.body.classList.remove('playing');
+  $('killer').textContent = s.killer ? `${s.killer}에게 먹혔습니다` : '';
+  $('stBest').textContent = s.best;
+  $('stTime').textContent = s.time >= 60 ? `${Math.floor(s.time / 60)}분 ${s.time % 60}초` : `${s.time}초`;
+  $('stFood').textContent = s.food;
+  $('stCells').textContent = s.cells;
+  $('stRank').textContent = s.rank ? `${s.rank}위` : '-';
+  $('deathScreen').classList.remove('hidden');
+});
+
+socket.on('lb', ({ t, r }) => {
+  const list = $('lbList');
+  list.replaceChildren();
+  const add = (rank, pid) => {
+    const li = document.createElement('li');
+    li.textContent = `${rank}. ${nameOf(pid)}`;
+    if (pid === myPid) li.className = 'me';
+    list.appendChild(li);
+  };
+  t.forEach((pid, i) => add(i + 1, pid));
+  if (r > 10) add(r, myPid);
+});
+
+function measurePing() {
+  const t0 = performance.now();
+  socket.emit('p', () => {
+    const v = Math.round(performance.now() - t0);
+    ping = ping ? Math.round(ping * 0.7 + v * 0.3) : v;
+  });
+}
+socket.on('connect', measurePing);
+setInterval(measurePing, 1000);
+
+function join() {
+  if (!socket.connected) return;
+  const name = $('nameInput').value.trim();
+  try { localStorage.setItem('cellwars.name', name); } catch (e) {}
+  socket.emit('join', { name, w: vw, h: vh });
+}
+
+try { $('nameInput').value = localStorage.getItem('cellwars.name') || ''; } catch (e) {}
+$('playBtn').addEventListener('click', join);
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+$('againBtn').addEventListener('click', join);
+$('menuBtn').addEventListener('click', () => {
+  $('deathScreen').classList.add('hidden');
+  $('startScreen').classList.remove('hidden');
+  $('nameInput').focus();
+});
+
+function worldMouse() {
+  return [Math.round(cam.x + (mouseX - vw / 2) / cam.z), Math.round(cam.y + (mouseY - vh / 2) / cam.z)];
+}
+function sendMouse() { if (alive) socket.emit('m', worldMouse()); }
+function split() { if (alive) { sendMouse(); socket.emit('split'); } }
+function eject() { if (alive) { sendMouse(); socket.emit('eject'); } }
+
+window.addEventListener('pointermove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+canvas.addEventListener('pointerdown', e => { mouseX = e.clientX; mouseY = e.clientY; });
+window.addEventListener('keydown', e => {
+  if (!alive || e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!e.repeat) split();
+  } else if (e.code === 'KeyW') {
+    eject();
+  }
+});
+$('tSplit').addEventListener('pointerdown', e => { e.stopPropagation(); split(); });
+$('tEject').addEventListener('pointerdown', e => { e.stopPropagation(); eject(); });
+setInterval(sendMouse, 25);
+
+window.addEventListener('resize', resize);
+resize();
+
+function inView(o, left, right, top, bottom) {
+  return o.x + o.r > left && o.x - o.r < right && o.y + o.r > top && o.y - o.r < bottom;
+}
+
+function drawCell(o, z) {
+  const info = pinfo.get(o.pid);
+  const color = info ? info.color : '#888888';
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, o.r, 0, TAU);
+  ctx.fill();
+  const lw = Math.min(Math.max(o.r * 0.05, 3), 20);
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = darken(color);
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, Math.max(o.r - lw / 2, 1), 0, TAU);
+  ctx.stroke();
+
+  const screenR = o.r * z;
+  if (!info || screenR < 14) return;
+  const fs = o.r * 0.32;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeStyle = '#000';
+  ctx.fillStyle = '#fff';
+  if (info.name) {
+    ctx.font = `700 ${fs}px Ubuntu, 'Segoe UI', sans-serif`;
+    ctx.lineWidth = fs * 0.12;
+    ctx.strokeText(info.name, o.x, o.y);
+    ctx.fillText(info.name, o.x, o.y);
+  }
+  if (screenR > 28) {
+    const ms = fs * 0.55;
+    const my = info.name ? o.y + fs * 0.85 : o.y;
+    const mass = String(Math.floor(o.r * o.r / 100));
+    ctx.font = `700 ${ms}px Ubuntu, 'Segoe UI', sans-serif`;
+    ctx.lineWidth = ms * 0.12;
+    ctx.strokeText(mass, o.x, my);
+    ctx.fillText(mass, o.x, my);
+  }
+}
+
+function drawVirus(o) {
+  const spikes = Math.max(20, Math.round(o.r / 4));
+  ctx.beginPath();
+  for (let i = 0; i <= spikes * 2; i++) {
+    const a = (i * Math.PI) / spikes;
+    const rr = i % 2 ? o.r * 0.93 : o.r;
+    ctx.lineTo(o.x + Math.cos(a) * rr, o.y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#33ff33';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#1fc71f';
+  ctx.stroke();
+}
+
+function drawPellet(o) {
+  const info = pinfo.get(o.pid);
+  const color = info ? info.color : '#888888';
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, o.r, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = darken(color);
+  ctx.stroke();
+}
+
+const foodBuckets = [];
+const drawList = [];
+
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#f2fbff';
+  ctx.fillRect(0, 0, vw, vh);
+  if (!cfg) return;
+
+  const z = cam.z;
+  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - cam.x * z), dpr * (vh / 2 - cam.y * z));
+  const left = cam.x - vw / 2 / z, right = cam.x + vw / 2 / z;
+  const top = cam.y - vh / 2 / z, bottom = cam.y + vh / 2 / z;
+
+  const gs = 50;
+  ctx.strokeStyle = 'rgba(0,0,0,0.09)';
+  ctx.lineWidth = 1 / z;
+  ctx.beginPath();
+  for (let x = Math.floor(left / gs) * gs; x <= right; x += gs) { ctx.moveTo(x, top); ctx.lineTo(x, bottom); }
+  for (let y = Math.floor(top / gs) * gs; y <= bottom; y += gs) { ctx.moveTo(left, y); ctx.lineTo(right, y); }
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(0, 0, cfg.W, cfg.H);
+
+  const fr = cfg.foodR;
+  for (let i = 0; i < cfg.foodColors.length; i++) foodBuckets[i] = foodBuckets[i] || [];
+  for (const f of food.values()) {
+    if (f.x < left - fr || f.x > right + fr || f.y < top - fr || f.y > bottom + fr) continue;
+    foodBuckets[f.c].push(f);
+  }
+  for (let i = 0; i < cfg.foodColors.length; i++) {
+    const b = foodBuckets[i];
+    if (!b.length) continue;
+    ctx.fillStyle = cfg.foodColors[i];
+    ctx.beginPath();
+    for (const f of b) { ctx.moveTo(f.x + fr, f.y); ctx.arc(f.x, f.y, fr, 0, TAU); }
+    ctx.fill();
+    b.length = 0;
+  }
+
+  drawList.length = 0;
+  for (const o of pellets.values()) if (inView(o, left, right, top, bottom)) { o.k = 1; drawList.push(o); }
+  for (const o of viruses.values()) if (inView(o, left, right, top, bottom)) { o.k = 2; drawList.push(o); }
+  for (const o of cells.values()) if (inView(o, left, right, top, bottom)) { o.k = 0; drawList.push(o); }
+  drawList.sort((a, b) => a.r - b.r);
+  for (const o of drawList) {
+    if (o.k === 0) drawCell(o, z);
+    else if (o.k === 1) drawPellet(o);
+    else drawVirus(o);
+  }
+
+  drawMinimap();
+}
+
+function drawMinimap() {
+  if (!alive) return;
+  const s = mini.width / cfg.W;
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  mctx.clearRect(0, 0, mini.width, mini.height);
+  mctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  mctx.lineWidth = 1;
+  mctx.beginPath();
+  for (let i = 1; i < 5; i++) {
+    const p = (mini.width / 5) * i;
+    mctx.moveTo(p, 0); mctx.lineTo(p, mini.height);
+    mctx.moveTo(0, p); mctx.lineTo(mini.width, p);
+  }
+  mctx.stroke();
+  const info = pinfo.get(myPid);
+  mctx.fillStyle = info ? info.color : '#fff';
+  for (const o of cells.values()) {
+    if (o.pid !== myPid) continue;
+    mctx.beginPath();
+    mctx.arc(o.x * s, o.y * s, Math.max(o.r * s, 2.5 * dpr), 0, TAU);
+    mctx.fill();
+  }
+  mctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  mctx.strokeRect((cam.x - vw / 2 / cam.z) * s, (cam.y - vh / 2 / cam.z) * s, (vw / cam.z) * s, (vh / cam.z) * s);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  const a = 1 - Math.exp(-dt * 14);
+  const ac = 1 - Math.exp(-dt * 6);
+  const [mx, my] = alive ? worldMouse() : [0, 0];
+  const lag = lagMs();
+  for (const group of [cells, pellets, viruses]) {
+    for (const o of group.values()) {
+      o.r += (o.tr - o.r) * a;
+      if (!o.h || !alive) {
+        o.x += (o.tx - o.x) * a;
+        o.y += (o.ty - o.y) * a;
+        continue;
+      }
+      if (!o.h.length || o.h[0][0] > now - lag) {
+        // Too young to reconcile yet: follow server, but record history
+        o.x += (o.tx - o.x) * a;
+        o.y += (o.ty - o.y) * a;
+      } else {
+        const dx = Math.min(Math.max(mx, 0), cfg.W) - o.x, dy = Math.min(Math.max(my, 0), cfg.H) - o.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1) {
+          const step = Math.min(speedFor(o.tr) * Math.min(1, d / 64) * dt, d);
+          o.x += (dx / d) * step;
+          o.y += (dy / d) * step;
+        }
+        let cx, cy;
+        if (Math.hypot(o.ex, o.ey) > 400) { cx = o.ex; cy = o.ey; } else { cx = o.ex * ac; cy = o.ey * ac; }
+        o.x += cx; o.y += cy; o.ex -= cx; o.ey -= cy;
+        for (const e of o.h) { e[1] += cx; e[2] += cy; }
+        const r = o.tr;
+        o.x = Math.min(Math.max(o.x, Math.min(r, cfg.W / 2)), Math.max(cfg.W - r, cfg.W / 2));
+        o.y = Math.min(Math.max(o.y, Math.min(r, cfg.H / 2)), Math.max(cfg.H - r, cfg.H / 2));
+      }
+      o.h.push([now, o.x, o.y]);
+      while (o.h.length > 2 && o.h[1][0] < now - lag - 1000) o.h.shift();
+    }
+  }
+
+  if (alive) {
+    let sx = 0, sy = 0, sr = 0, n = 0, m = 0;
+    for (const o of cells.values()) {
+      if (o.pid !== myPid) continue;
+      sx += o.x; sy += o.y; sr += o.r; m += o.tr * o.tr / 100; n++;
+    }
+    if (n) {
+      cam.x = sx / n;
+      cam.y = sy / n;
+      const tz = Math.pow(Math.min(64 / sr, 1), 0.4) * Math.max(vh / 1080, vw / 1920);
+      cam.z += (tz - cam.z) * Math.min(1, dt * 4);
+      myMass = Math.floor(m);
+    }
+    $('score').textContent = `Score: ${myMass}`;
+    $('net').textContent = `Ping ${ping}ms · 플레이어 ${pinfo.size}명`;
+  }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
